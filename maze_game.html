@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maze Runner 3D — Уровни</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background:#0d1117; overflow:hidden; font-family:'Press Start 2P',monospace; color:#eee; }
+        #game { width:100vw; height:100vh; position:relative; }
+        #viewport { width:100%; height:100%; }
+        #viewport canvas { display:block; }
+        #hud { position:absolute; top:12px; left:50%; transform:translateX(-50%);
+                 display:flex; gap:20px; padding:10px 24px;
+                 background:rgba(0,0,0,0.8); border:2px solid #4a4e69;
+                 border-radius:10px; font-size:12px; z-index:5; pointer-events:none; flex-wrap:wrap; justify-content:center; }
+        .v-level { color:#bb86fc; } .v-score { color:#ffd166; }
+        .v-gems  { color:#06d6a0; } .v-time  { color:#ef476f; }
+        .overlay { position:absolute; top:0; left:0; width:100%; height:100%;
+                   display:flex; flex-direction:column; align-items:center;
+                   justify-content:center; gap:18px; z-index:10; text-align:center; }
+        .overlay.hidden { display:none; }
+        #startScreen { background:rgba(0,0,0,0.9); }
+        #startScreen h1 { font-size:26px; color:#ffd166; text-shadow:3px 3px 0 #000; }
+        #startScreen p, #endScreen p, #levelScreen p, #rewardScreen p { font-size:10px; color:#bbb; line-height:2.4; }
+        #endScreen, #levelScreen, #rewardScreen { background:rgba(0,0,0,0.85); }
+        #endScreen h2, #levelScreen h2, #rewardScreen h2 { font-size:22px; text-shadow:2px 2px 4px #000; }
+        .win { color:#06d6a0; } .lose { color:#ef476f; } .lvl-complete { color:#bb86fc; }
+        #endScore, #levelScore { font-size:15px; color:#ffd166; }
+        .btn { font-family:'Press Start 2P',monospace; font-size:11px;
+               padding:12px 28px; border:2px solid #4a4e69; border-radius:8px;
+               cursor:pointer; background:#16213e; color:#eee;
+               transition:background .15s,border-color .15s,transform .1s; }
+        .btn:hover { background:#0f3460; border-color:#ffd166; transform:translateY(-2px); }
+        .btn:active { transform:translateY(0); }
+        .btn-big { font-size:14px; padding:16px 40px; }
+        .scores { font-size:9px; color:#888; margin-top:8px; }
+        .scores table { border-collapse:collapse; margin:8px auto; }
+        .scores td,.scores th { padding:4px 12px; border:1px solid #4a4e69; }
+        #bottomBar { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); z-index:5; }
+        #hint { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+                font-size:8px; color:#444; z-index:5; pointer-events:none; }
+        #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+                   font-size:14px; color:#ffd166; z-index:20; }
+        #loading.hidden { display:none; }
+        #dpad { position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
+                z-index:8; display:none; }
+        @media (max-width:768px) { #dpad { display:block; } }
+        .dpad-btn { position:absolute; width:52px; height:52px;
+                    background:rgba(255,255,255,0.12); border:2px solid rgba(255,255,255,0.25);
+                    border-radius:10px; font-size:18px; color:#fff;
+                    display:flex; align-items:center; justify-content:center;
+                    user-select:none; -webkit-user-select:none; touch-action:none; }
+        .dpad-btn:active { background:rgba(255,255,255,0.3); }
+        .dpad-up { left:56px; top:0; } .dpad-down { left:56px; top:112px; }
+        .dpad-left { left:0; top:56px; } .dpad-right { left:112px; top:56px; }
+
+        /* === БОНУСЫ: HUD индикаторы === */
+        #bonusBar { position:absolute; top:62px; left:50%; transform:translateX(-50%);
+                   display:flex; gap:8px; z-index:5; pointer-events:none; }
+        .buff-tag { padding:4px 10px; border-radius:6px; font-size:8px;
+                    background:rgba(0,0,0,0.7); border:1px solid; display:none; }
+        .buff-tag.active { display:block; }
+        .buff-speed { color:#ffdd57; border-color:#ffdd57; }
+        .buff-score { color:#ff6b9d; border-color:#ff6b9d; }
+        .buff-compass { color:#57c7ff; border-color:#57c7ff; }
+        #dashBar { position:absolute; top:90px; left:50%; transform:translateX(-50%);
+                   z-index:5; pointer-events:none; font-size:7px; color:#888; text-align:center; }
+        #dashBar .dash-fill { display:inline-block; width:60px; height:6px; background:#333;
+                              border-radius:3px; overflow:hidden; vertical-align:middle; margin-left:4px; }
+        #dashBar .dash-fill-inner { height:100%; background:linear-gradient(90deg,#ff8844,#ffcc00);
+                                    border-radius:3px; transition:width .1s; }
+        #notif { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+                 z-index:6; pointer-events:none; font-size:14px; text-align:center;
+                 text-shadow:2px 2px 4px #000; opacity:0; transition:opacity .3s; }
+        #notif.show { opacity:1; }
+
+        /* === ЭКРАН НАГРАД === */
+        #rewardScreen .reward-cards { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin:8px 0; }
+        .reward-card { background:rgba(255,255,255,0.06); border:2px solid #4a4e69;
+                       border-radius:10px; padding:14px 16px; width:180px; cursor:pointer;
+                       transition:border-color .2s, transform .2s, background .2s; text-align:center; }
+        .reward-card:hover { border-color:#ffd166; transform:translateY(-3px); background:rgba(255,255,255,0.1); }
+        .reward-card .rc-icon { font-size:28px; margin-bottom:6px; }
+        .reward-card .rc-name { font-size:9px; color:#ffd166; margin-bottom:4px; }
+        .reward-card .rc-desc { font-size:7px; color:#aaa; line-height:1.8; }
+    </style>
+</head>
+    <body>
+    <div id="game">
+        <div id="viewport"></div>
+        <div id="hud">
+            <span>Уровень: <span class="v-level" id="levelVal">1</span></span>
+            <span>Счёт: <span class="v-score" id="scoreVal">0</span></span>
+            <span>Кристаллы: <span class="v-gems" id="gemsVal">0</span> / <span id="gemsTotal">0</span></span>
+            <span>Время: <span class="v-time" id="timeVal">60</span></span>
+        </div>
+        <div id="bonusBar">
+            <span class="buff-tag buff-speed" id="buffSpeed">SPEED x2</span>
+            <span class="buff-tag buff-score" id="buffScore">x3 ОЧКИ</span>
+            <span class="buff-tag buff-compass" id="buffCompass">КОМПАС</span>
+        </div>
+        <div id="dashBar">РЫВОК [Shift]
+            <span class="dash-fill"><span class="dash-fill-inner" id="dashFill" style="width:100%"></span></span>
+        </div>
+        <div id="notif"></div>
+        <div class="overlay" id="startScreen">
+            <h1>MAZE RUNNER 3D</h1>
+            <p>Проходи уровни, собирай кристаллы,<br>подбирай бонусы и используй рывок!</p>
+            <p>Управление: Стрелки / WASD<br>Рывок: Shift (30% шанс, кулдаун 5с)</p>
+            <p>Бонусы на карте:<br>
+            Молния = скорость x2 | Часы = +15с<br>
+            Звезда = очки x3 | Компас = путь к выходу</p>
+            <button class="btn btn-big" id="btnStart">НАЧАТЬ ИГРУ</button>
+            <div class="scores" id="scoresStart"></div>
+        </div>
+        <div class="overlay hidden" id="rewardScreen">
+            <h2 id="rwTitle" style="color:#bb86fc">НАГРАДА ЗА УРОВЕНЬ!</h2>
+            <p id="rwMsg">Выбери бонус для следующего уровня:</p>
+            <div class="reward-cards" id="rwCards"></div>
+            <button class="btn btn-big" id="btnSkipReward">ПРОПУСТИТЬ</button>
+        </div>
+        <div class="overlay hidden" id="levelScreen">
+            <h2 id="lvlTitle" class="lvl-complete"></h2>
+            <p id="lvlMsg"></p>
+            <div id="levelScore"></div>
+            <button class="btn btn-big" id="btnNext">СЛЕДУЮЩИЙ УРОВЕНЬ</button>
+        </div>
+        <div class="overlay hidden" id="endScreen">
+            <h2 id="endTitle"></h2>
+            <p id="endMsg"></p>
+            <div id="endScore"></div>
+            <button class="btn" id="btnRestart">ЗАНОВО</button>
+            <button class="btn" id="btnMenu">В МЕНЮ</button>
+            <div class="scores" id="scoresEnd"></div>
+        </div>
+        <div id="bottomBar"><button class="btn" id="btnHotRestart">RESTART</button></div>
+        <div id="hint">Стрелки / WASD — движение | Shift — рывок</div>
+        <div id="loading">Загрузка 3D...</div>
+        <div id="dpad">
+            <div class="dpad-btn dpad-up" data-dir="up">&#9650;</div>
+            <div class="dpad-btn dpad-down" data-dir="down">&#9660;</div>
+            <div class="dpad-btn dpad-left" data-dir="left">&#9664;</div>
+            <div class="dpad-btn dpad-right" data-dir="right">&#9654;</div>
+        </div>
+    </div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <script>
+
+        // ============================
+        // КОНСТАНТЫ
+        // ============================
+        const CELL = 2;
+        const WALL_H = 3.0;
+        const PLAYER_R = 0.38;
+        const SPEED = 0.065;
+        const SUBSTEPS = 8;
+        const CAM_HEIGHT = 14;
+        const CAM_BACK = 10;
+        const CAM_LERP = 0.06;
+        const MAX_LEVEL = 12;
+
+        // ============================
+        // DOM
+        // ============================
+        const viewport   = document.getElementById('viewport');
+        const $level     = document.getElementById('levelVal');
+        const $score     = document.getElementById('scoreVal');
+        const $gems      = document.getElementById('gemsVal');
+        const $gemsTot   = document.getElementById('gemsTotal');
+        const $time      = document.getElementById('timeVal');
+        const $start     = document.getElementById('startScreen');
+        const $rewardScr = document.getElementById('rewardScreen');
+        const $rwTitle   = document.getElementById('rwTitle');
+        const $rwMsg     = document.getElementById('rwMsg');
+        const $rwCards   = document.getElementById('rwCards');
+        const $levelScr  = document.getElementById('levelScreen');
+        const $lvlTitle  = document.getElementById('lvlTitle');
+        const $lvlMsg    = document.getElementById('lvlMsg');
+        const $levelScore= document.getElementById('levelScore');
+        const $end       = document.getElementById('endScreen');
+        const $endTitle  = document.getElementById('endTitle');
+        const $endMsg    = document.getElementById('endMsg');
+        const $endScore  = document.getElementById('endScore');
+        const $loading   = document.getElementById('loading');
+        const $buffSpeed = document.getElementById('buffSpeed');
+        const $buffScore = document.getElementById('buffScore');
+        const $buffCompass = document.getElementById('buffCompass');
+        const $dashFill  = document.getElementById('dashFill');
+        const $notif     = document.getElementById('notif');
+
+        // ============================
+        // THREE.JS объекты
+        // ============================
+        let scene, camera, renderer;
+        let playerGroup, playerLight;
+        let gemMeshes = [], gemLights = [];
+        let portalGroup, portalLight;
+        let floorMesh, wallInstancedMesh, wallTopMesh;
+        let particles = [];
+        let wallTexture = null, floorTexture = null;
+
+        // ============================
+        // СОСТОЯНИЕ ИГРЫ
+        // ============================
+        let state = 'menu';  
+        let map = [];
+        let mapRows = 0, mapCols = 0;
+        let currentLevel = 1;
+        let score = 0;
+        let gemsCollected = 0, totalGems = 0, timeLeft = 60;
+        let exitOpen = false;
+        let exitPos3D = { x: 0, z: 0 };
+        let timer = null;
+        let keys = {};
+        let scores = [];
+
+        // ============================
+        // БОНУСЫ: переменные состояния
+        // ============================
+        let bonusMeshes = [];       
+        let bonusLights = [];       
+        let compassPath = [];       
+        let compassMarkers = [];    
+
+        let speedBuff = { active: false, timer: 0, duration: 300 };    
+        let scoreBuff = { active: false, timer: 0, duration: 600 };    
+        let compassBuff = { active: false, timer: 0, duration: 480 };  
+
+        let dashCooldown = 0;
+        const DASH_CD = 300;  
+        const DASH_CHANCE = 0.30;  
+        let dashFlash = 0;  
+
+        let permBonus = {
+            speed: 0,    
+            time: 0,     
+            score: 0,    
+            gems: false  
+        };
+
+        // ============================
+        // КОНФИГУРАЦИЯ УРОВНЕЙ
+        // ============================
+        function getLevelConfig(level) {
+            const lvl = Math.min(level, MAX_LEVEL);
+            const nodes = 3 + lvl * 2;
+            const grid = nodes * 3;
+            const gems = Math.min(3 + lvl * 2, 30);
+            const time = 50 + lvl * 12 + (permBonus.time * 10);
+            return { nodes, grid, gems, time };
+        }
+
+        function getBonusCount(level) {
+            return Math.min(1 + Math.floor(level / 2), 5);
+        }
+
+        // ============================
+        // ГЕНЕРАТОР ЛАБИРИНТОВ
+        // ============================
+        function shuffle(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function generateMaze(level) {
+            const cfg = getLevelConfig(level);
+            const N = cfg.grid;
+            const STEP = 3;
+
+            const grid = [];
+            for (let r = 0; r < N; r++) grid[r] = new Array(N).fill(1);
+
+            grid[1][1] = 0;
+            const stack = [{ r: 1, c: 1 }];
+
+            while (stack.length > 0) {
+                const cur = stack[stack.length - 1];
+                const dirs = shuffle([[0, STEP], [0, -STEP], [STEP, 0], [-STEP, 0]]);
+                let moved = false;
+
+                for (const [dr, dc] of dirs) {
+                    const nr = cur.r + dr, nc = cur.c + dc;
+                    if (nr > 0 && nr < N - 1 && nc > 0 && nc < N - 1 && grid[nr][nc] === 1) {
+                        const sr = dr === 0 ? 0 : (dr > 0 ? 1 : -1);
+                        const sc = dc === 0 ? 0 : (dc > 0 ? 1 : -1);
+                        grid[cur.r + sr][cur.c + sc] = 0;
+                        grid[cur.r + sr * 2][cur.c + sc * 2] = 0;
+                        grid[nr][nc] = 0;
+                        stack.push({ r: nr, c: nc });
+                        moved = true;
+                        break;
+                    }
+                }
+                if (!moved) stack.pop();
+            }
+
+            const extra = Math.floor(N * N * 0.015);
+            let added = 0, tries = 0;
+            while (added < extra && tries < extra * 10) {
+                tries++;
+                const r = 1 + Math.floor(Math.random() * (N - 2));
+                const c = 1 + Math.floor(Math.random() * (N - 2));
+                if (grid[r][c] !== 1) continue;
+                let adj = 0;
+                if (r > 0 && grid[r-1][c] === 0) adj++;
+                if (r < N-1 && grid[r+1][c] === 0) adj++;
+                if (c > 0 && grid[r][c-1] === 0) adj++;
+                if (c < N-1 && grid[r][c+1] === 0) adj++;
+                if (adj >= 2) { grid[r][c] = 0; added++; }
+            }
+
+            const open = [], deadEnds = [];
+            for (let r = 1; r < N - 1; r++) {
+                for (let c = 1; c < N - 1; c++) {
+                    if (grid[r][c] !== 0) continue;
+                    open.push({ r, c });
+                    let nb = 0;
+                    if (grid[r-1][c] === 0) nb++;
+                    if (grid[r+1][c] === 0) nb++;
+                    if (grid[r][c-1] === 0) nb++;
+                    if (grid[r][c+1] === 0) nb++;
+                    if (nb === 1) deadEnds.push({ r, c });
+                }
+            }
+
+            let far = { r: 1, c: 1 }, maxDist = 0;
+            const dist = Array.from({ length: N }, () => new Array(N).fill(-1));
+            dist[1][1] = 0;
+            const q2 = [{ r: 1, c: 1 }];
+            while (q2.length > 0) {
+                const cur = q2.shift();
+                if (dist[cur.r][cur.c] > maxDist) {
+                    maxDist = dist[cur.r][cur.c];
+                    far = { r: cur.r, c: cur.c };
+                }
+                for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+                    const nr = cur.r + dr, nc = cur.c + dc;
+                    if (nr >= 0 && nr < N && nc >= 0 && nc < N && dist[nr][nc] === -1 && grid[nr][nc] === 0) {
+                        dist[nr][nc] = dist[cur.r][cur.c] + 1;
+                        q2.push({ r: nr, c: nc });
+                    }
+                }
+            }
+
+            window._mazeDist = dist;
+            window._mazeExit = far;
+
+            grid[1][1] = 2;
+            grid[far.r][far.c] = 4;
+
+            shuffle(deadEnds);
+            let placed = 0;
+            for (const de of deadEnds) {
+                if (placed >= cfg.gems) break;
+                if (grid[de.r][de.c] !== 0) continue;
+                grid[de.r][de.c] = 3;
+                placed++;
+            }
+            if (placed < cfg.gems) {
+                const rest = open.filter(c => grid[c.r][c.c] === 0);
+                shuffle(rest);
+                for (const c of rest) {
+                    if (placed >= cfg.gems) break;
+                    grid[c.r][c.c] = 3;
+                    placed++;
+                }
+            }
+
+            const bonusCount = getBonusCount(level);
+            const bonusPositions = [];
+            const avail = open.filter(c => grid[c.r][c.c] === 0 && !(c.r === 1 && c.c === 1));
+            shuffle(avail);
+            for (let i = 0; i < bonusCount && i < avail.length; i++) {
+                grid[avail[i].r][avail[i].c] = 5;
+                bonusPositions.push({ r: avail[i].r, c: avail[i].c });
+            }
+
+            return grid;
+        }
+
+        // ============================
+        // BFS ПУТЬ (для компаса)
+        // ============================
+        function findPathToExit() {
+            const N = mapRows;
+            const startR = Math.round(playerGroup.position.z / CELL);
+            const startC = Math.round(playerGroup.position.x / CELL);
+            const exitR = window._mazeExit.r, exitC = window._mazeExit.c;
+
+            const visited = Array.from({ length: N }, () => new Array(N).fill(false));
+            const parent = Array.from({ length: N }, () => new Array(N).fill(null));
+            const queue = [{ r: startR, c: startC }];
+            visited[startR][startC] = true;
+
+            while (queue.length > 0) {
+                const cur = queue.shift();
+                if (cur.r === exitR && cur.c === exitC) break;
+                for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+                    const nr = cur.r + dr, nc = cur.c + dc;
+                    if (nr >= 0 && nr < N && nc >= 0 && nc < N && !visited[nr][nc]) {
+                        const v = map[nr][nc];
+                        if (v === 0 || v === 2 || v === 3 || v === 5 || v === 4) {
+                            visited[nr][nc] = true;
+                            parent[nr][nc] = { r: cur.r, c: cur.c };
+                            queue.push({ r: nr, c: nc });
+                        }
+                    }
+                }
+            }
+
+            const path = [];
+            let cur = { r: exitR, c: exitC };
+            while (cur) {
+                path.unshift(cur);
+                cur = parent[cur.r][cur.c];
+            }
+            return path;
+        }
+
+        // ============================
+        // ИНИЦИАЛИЗАЦИЯ THREE.JS
+        // ============================
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0e17);
+            scene.fog = new THREE.FogExp2(0x0a0e17, 0.025);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 300);
+            camera.position.set(0, CAM_HEIGHT, CAM_BACK);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            viewport.appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0x223355, 0.6));
+
+            const dir = new THREE.DirectionalLight(0x6688cc, 0.35);
+            dir.position.set(10, 20, 10);
+            dir.castShadow = true;
+            dir.shadow.mapSize.set(1024, 1024);
+            dir.shadow.camera.near = 1;
+            dir.shadow.camera.far = 80;
+            dir.shadow.camera.left = -40;
+            dir.shadow.camera.right = 40;
+            dir.shadow.camera.top = 40;
+            dir.shadow.camera.bottom = -40;
+            scene.add(dir);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            $loading.classList.add('hidden');
+        }
+
+        function loadTextures() {
+            const loader = new THREE.TextureLoader();
+            loader.load('wall.png', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; wallTexture = t; }, undefined, () => {});
+            loader.load('floor.png', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; floorTexture = t; }, undefined, () => {});
+        }
+
+        // ============================
+        // ПОСТРОЕНИЕ 3D СЦЕНЫ
+        // ============================
+        function clearScene() {
+            if (wallInstancedMesh) { scene.remove(wallInstancedMesh); wallInstancedMesh = null; }
+            if (wallTopMesh) { scene.remove(wallTopMesh); wallTopMesh = null; }
+            if (floorMesh) { scene.remove(floorMesh); floorMesh = null; }
+            gemMeshes.forEach(m => scene.remove(m)); gemMeshes = [];
+            gemLights.forEach(l => scene.remove(l)); gemLights = [];
+            if (portalGroup) { scene.remove(portalGroup); portalGroup = null; }
+            if (portalLight) { scene.remove(portalLight); portalLight = null; }
+            if (playerGroup) { scene.remove(playerGroup); playerGroup = null; }
+            if (playerLight) { scene.remove(playerLight); playerLight = null; }
+            particles.forEach(p => scene.remove(p.mesh)); particles = [];
+            bonusMeshes.forEach(m => scene.remove(m)); bonusMeshes = [];
+            bonusLights.forEach(l => scene.remove(l)); bonusLights = [];
+            compassMarkers.forEach(m => scene.remove(m)); compassMarkers = [];
+        }
+
+        function buildScene() {
+            clearScene();
+
+            const N = mapCols;
+            let startPos = { x: CELL, z: CELL };
+            const gemPos = [];
+            const bonusPos = [];
+
+            const fGeo = new THREE.PlaneGeometry(N * CELL + 6, N * CELL + 6);
+            const fMat = new THREE.MeshStandardMaterial({ color: 0x4a5080, roughness: 0.9, metalness: 0.05 });
+            if (floorTexture) { floorTexture.repeat.set(N, N); fMat.map = floorTexture; }
+            floorMesh = new THREE.Mesh(fGeo, fMat);
+            floorMesh.rotation.x = -Math.PI / 2;
+            floorMesh.position.set(N * CELL / 2 - CELL / 2, -0.01, N * CELL / 2 - CELL / 2);
+            floorMesh.receiveShadow = true;
+            scene.add(floorMesh);
+
+            let wallCount = 0;
+            for (let r = 0; r < N; r++)
+                for (let c = 0; c < N; c++)
+                    if (map[r][c] === 1) wallCount++;
+
+            const wGeo = new THREE.BoxGeometry(CELL, WALL_H, CELL);
+            const wMat = new THREE.MeshStandardMaterial({ color: 0x2d3148, roughness: 0.85, metalness: 0.1 });
+            if (wallTexture) wMat.map = wallTexture;
+            wallInstancedMesh = new THREE.InstancedMesh(wGeo, wMat, wallCount);
+            wallInstancedMesh.receiveShadow = true;
+
+            const obj = new THREE.Object3D();
+            let wi = 0;
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    const cell = map[r][c];
+                    const wx = c * CELL, wz = r * CELL;
+
+                    if (cell === 1) {
+                        obj.position.set(wx, WALL_H / 2, wz);
+                        obj.rotation.set(0, 0, 0);
+                        obj.scale.set(1, 1, 1);
+                        obj.updateMatrix();
+                        wallInstancedMesh.setMatrixAt(wi, obj.matrix);
+                        wi++;
+                    } else if (cell === 2) {
+                        startPos = { x: wx, z: wz };
+                    } else if (cell === 3) {
+                        gemPos.push({ x: wx, z: wz });
+                    } else if (cell === 4) {
+                        exitPos3D = { x: wx, z: wz };
+                    } else if (cell === 5) {
+                        bonusPos.push({ x: wx, z: wz, row: r, col: c });
+                    }
+                }
+            }
+            wallInstancedMesh.instanceMatrix.needsUpdate = true;
+            scene.add(wallInstancedMesh);
+
+            const tGeo = new THREE.BoxGeometry(CELL + 0.1, 0.15, CELL + 0.1);
+            const tMat = new THREE.MeshStandardMaterial({ color: 0x5b4a7a, roughness: 0.6, metalness: 0.2 });
+            wallTopMesh = new THREE.InstancedMesh(tGeo, tMat, wallCount);
+            wi = 0;
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    if (map[r][c] === 1) {
+                        obj.position.set(c * CELL, WALL_H + 0.075, r * CELL);
+                        obj.rotation.set(0, 0, 0);
+                        obj.scale.set(1, 1, 1);
+                        obj.updateMatrix();
+                        wallTopMesh.setMatrixAt(wi, obj.matrix);
+                        wi++;
+                    }
+                }
+            }
+            wallTopMesh.instanceMatrix.needsUpdate = true;
+            scene.add(wallTopMesh);
+
+            createPlayer(startPos.x, startPos.z);
+            createGems(gemPos);
+            createBonusPickups(bonusPos);
+            createPortal();
+
+            camera.position.set(startPos.x, CAM_HEIGHT, startPos.z + CAM_BACK);
+            camera.lookAt(startPos.x, 0, startPos.z);
+
+            const fogD = Math.max(0.012, 0.035 - currentLevel * 0.002);
+            scene.fog = new THREE.FogExp2(0x0a0e17, fogD);
+        }
+
+        // ============================
+        // БОНУСЫ НА КАРТЕ (3D объекты)
+        // ============================
+        const BONUS_TYPES = [
+            { name: 'Ускорение', icon: '\u26A1', color: 0xffdd57, hex: '#ffdd57', duration: 300 },
+            { name: '+15 секунд', icon: '\u23F0', color: 0x57c7ff, hex: '#57c7ff', duration: 0 },
+            { name: 'x3 очки',   icon: '\u2B50', color: 0xff6b9d, hex: '#ff6b9d', duration: 600 },
+            { name: 'Компас',    icon: '\uD83D\uDDED', color: 0x44dd88, hex: '#44dd88', duration: 480 }
+        ];
+
+        function createBonusPickups(positions) {
+            const lightningGeo = new THREE.OctahedronGeometry(0.25);
+            const clockGeo = new THREE.TorusGeometry(0.2, 0.06, 8, 16);
+            const starGeo = new THREE.DodecahedronGeometry(0.22);
+            const compassGeo = new THREE.IcosahedronGeometry(0.22);
+            const geos = [lightningGeo, clockGeo, starGeo, compassGeo];
+
+            positions.forEach((pos, i) => {
+                const type = BONUS_TYPES[i % BONUS_TYPES.length];
+                const mat = new THREE.MeshStandardMaterial({
+                    color: type.color, emissive: type.color, emissiveIntensity: 0.6,
+                    metalness: 0.5, roughness: 0.2, transparent: true, opacity: 0.9
+                });
+                const mesh = new THREE.Mesh(geos[i % geos.length], mat);
+                mesh.position.set(pos.x, 1.0, pos.z);
+                mesh.userData = {
+                    collected: false,
+                    typeIdx: i % BONUS_TYPES.length,
+                    baseY: 1.0,
+                    index: i,
+                    hex: type.hex
+                };
+                scene.add(mesh);
+                bonusMeshes.push(mesh);
+
+                const light = new THREE.PointLight(type.color, 0.4, 4);
+                light.position.set(pos.x, 1.5, pos.z);
+                scene.add(light);
+                bonusLights.push(light);
+            });
+        }
+
+        function animateBonuses(t) {
+            bonusMeshes.forEach(mesh => {
+                if (mesh.userData.collected) return;
+                mesh.rotation.y += 0.03;
+                mesh.rotation.x = Math.sin(t * 0.003 + mesh.userData.index * 2) * 0.4;
+                mesh.position.y = mesh.userData.baseY + Math.sin(t * 0.004 + mesh.userData.index) * 0.2;
+                // Пульсация яркости
+                mesh.material.emissiveIntensity = 0.4 + Math.sin(t * 0.005 + mesh.userData.index) * 0.3;
+            });
+        }
+
+        function checkBonuses() {
+            for (let i = 0; i < bonusMeshes.length; i++) {
+                const mesh = bonusMeshes[i];
+                if (mesh.userData.collected) continue;
+                const gx = mesh.position.x - playerGroup.position.x;
+                const gz = mesh.position.z - playerGroup.position.z;
+                if (gx * gx + gz * gz < 1.4) {
+                    mesh.userData.collected = true;
+                    scene.remove(mesh);
+                    if (i < bonusLights.length) scene.remove(bonusLights[i]);
+
+                    const type = BONUS_TYPES[mesh.userData.typeIdx];
+                    spawnParticles(mesh.position.x, 1.2, mesh.position.z, type.hex, 12);
+                    sfxBonus();
+
+                    applyBonus(mesh.userData.typeIdx);
+                }
+            }
+        }
+
+        function applyBonus(typeIdx) {
+            switch (typeIdx) {
+                case 0: 
+                    speedBuff.active = true;
+                    speedBuff.timer = speedBuff.duration;
+                    showNotification('\u26A1 СКОРОСТЬ x2!', '#ffdd57');
+                    break;
+                case 1: 
+                    timeLeft += 15;
+                    $time.textContent = timeLeft;
+                    $time.style.color = '#57c7ff';
+                    setTimeout(() => { if (state === 'playing') $time.style.color = ''; }, 500);
+                    showNotification('\u23F0 +15 СЕКУНД!', '#57c7ff');
+                    break;
+                case 2: 
+                    scoreBuff.active = true;
+                    scoreBuff.timer = scoreBuff.duration;
+                    showNotification('\u2B50 ОЧКИ x3!', '#ff6b9d');
+                    break;
+                case 3: 
+                    compassBuff.active = true;
+                    compassBuff.timer = compassBuff.duration;
+                    showCompassPath();
+                    showNotification('\uD83D\uDDED КОМПАС АКТИВЕН!', '#44dd88');
+                    break;
+            }
+        }
+
+        // ============================
+        // КОМПАС: визуализация пути
+        // ============================
+        function showCompassPath() {
+            clearCompassMarkers();
+            const path = findPathToExit();
+            if (path.length < 2) return;
+
+            const markerGeo = new THREE.SphereGeometry(0.12, 6, 6);
+            const markerMat = new THREE.MeshBasicMaterial({ color: 0x44dd88, transparent: true, opacity: 0.6 });
+
+            for (let i = 0; i < path.length; i += 3) {
+                const m = new THREE.Mesh(markerGeo, markerMat);
+                m.position.set(path[i].c * CELL, 0.15, path[i].r * CELL);
+                scene.add(m);
+                compassMarkers.push(m);
+            }
+            const last = path[path.length - 1];
+            const mEnd = new THREE.Mesh(markerGeo, markerMat.clone());
+            mEnd.material.color.setHex(0x06d6a0);
+            mEnd.material.opacity = 0.9;
+            mEnd.position.set(last.c * CELL, 0.15, last.r * CELL);
+            scene.add(mEnd);
+            compassMarkers.push(mEnd);
+        }
+
+        function clearCompassMarkers() {
+            compassMarkers.forEach(m => scene.remove(m));
+            compassMarkers = [];
+        }
+
+        // ============================
+        // РЫВОК (DASH)
+        // ============================
+        function tryDash() {
+            if (dashCooldown > 0 || state !== 'playing') return;
+
+            if (Math.random() < DASH_CHANCE) {
+                sfxDash(true);
+                showNotification('\u26A1 РЫВОК!', '#ffcc00');
+
+                let dx = 0, dz = 0;
+                if (keys['ArrowUp']    || keys['w'] || keys['W'] || keys['ц'] || keys['Ц'] || dpadDirs.up)    dz = -1;
+                if (keys['ArrowDown']  || keys['s'] || keys['S'] || keys['ы'] || keys['Ы'] || dpadDirs.down)  dz = 1;
+                if (keys['ArrowLeft']  || keys['a'] || keys['A'] || keys['ф'] || keys['Ф'] || dpadDirs.left)  dx = -1;
+                if (keys['ArrowRight'] || keys['d'] || keys['D'] || keys['в'] || keys['В'] || dpadDirs.right) dx = 1;
+
+                if (dx === 0 && dz === 0) dz = -1;
+
+                const len = Math.sqrt(dx * dx + dz * dz);
+                if (len > 0) { dx /= len; dz /= len; }
+
+                const dashDist = CELL * 4; 
+                const stepSize = dashDist / 16; 
+
+                for (let i = 0; i < 16; i++) {
+                    const nx = playerGroup.position.x + dx * stepSize;
+                    const nz = playerGroup.position.z + dz * stepSize;
+                    if (!checkCollision(nx, nz)) {
+                        playerGroup.position.x = nx;
+                        playerGroup.position.z = nz;
+                    } else {
+                        break; 
+                    }
+                }
+
+                dashFlash = 15;
+                spawnParticles(playerGroup.position.x, 0.8, playerGroup.position.z, '#ffcc00', 10);
+                playerLight.intensity = 3.0;
+                playerLight.color.setHex(0xffcc00);
+
+            } else {
+                sfxDash(false);
+                showNotification('Рывок не удался...', '#ff4444');
+            }
+
+            dashCooldown = DASH_CD;
+        }
+
+        // ============================
+        // УВЕДОМЛЕНИЯ
+        // ============================
+        let notifTimeout = null;
+        function showNotification(text, color) {
+            $notif.textContent = text;
+            $notif.style.color = color;
+            $notif.classList.add('show');
+            if (notifTimeout) clearTimeout(notifTimeout);
+            notifTimeout = setTimeout(() => { $notif.classList.remove('show'); }, 1500);
+        }
+
+        // ============================
+        // НАГРАДЫ ЗА УРОВЕНЬ
+        // ============================
+        const REWARD_POOL = [
+            { id: 'speed',  icon: '\u26A1', name: 'Скорость +15%',
+            desc: 'Постоянное увеличение скорости\nдвижения на следующем уровне' },
+            { id: 'time',   icon: '\u23F0', name: '+10 секунд',
+            desc: 'Добавляет 10 секунд к таймеру\nна следующем уровне' },
+            { id: 'score',  icon: '\u2B50', name: 'Очки +50%',
+            desc: 'Множитель очков за кристаллы\nувеличивается на 50%' },
+            { id: 'gems',   icon: '\uD83D\uDC8E', name: 'Голова старта',
+            desc: 'Начинаешь уровень с 1 уже\nсобранным кристаллом' },
+            { id: 'dash',   icon: '\uD83D\uDCAA', name: 'Рывок улучшен',
+            desc: 'Шанс рывка увеличивается\nс 30% до 45%' },
+        ];
+
+        let dashChance = DASH_CHANCE;
+
+        function showRewardScreen() {
+            state = 'reward';
+
+            const pool = [...REWARD_POOL];
+            shuffle(pool);
+            const choices = pool.slice(0, 3);
+
+            $rwCards.innerHTML = '';
+            choices.forEach(reward => {
+                const card = document.createElement('div');
+                card.className = 'reward-card';
+                card.innerHTML =
+                    '<div class="rc-icon">' + reward.icon + '</div>' +
+                    '<div class="rc-name">' + reward.name + '</div>' +
+                    '<div class="rc-desc">' + reward.desc.replace(/\n/g, '<br>') + '</div>';
+                card.addEventListener('click', () => applyReward(reward.id));
+                $rwCards.appendChild(card);
+            });
+
+            $rewardScr.classList.remove('hidden');
+            $levelScr.classList.add('hidden');
+        }
+
+        function applyReward(id) {
+            sfxBonus();
+            switch (id) {
+                case 'speed':
+                    permBonus.speed = Math.min(permBonus.speed + 1, 3);
+                    showNotification('\u26A1 Скорость улучшена!', '#ffdd57');
+                    break;
+                case 'time':
+                    permBonus.time = Math.min(permBonus.time + 1, 5);
+                    showNotification('\u23F0 Бонус времени улучшен!', '#57c7ff');
+                    break;
+                case 'score':
+                    permBonus.score = Math.min(permBonus.score + 1, 4);
+                    showNotification('\u2B50 Множитель очков улучшен!', '#ff6b9d');
+                    break;
+                case 'gems':
+                    permBonus.gems = true;
+                    showNotification('\uD83D\uDC8E Голова старта активна!', '#ffd166');
+                    break;
+                case 'dash':
+                    dashChance = Math.min(dashChance + 0.15, 0.80);
+                    showNotification('\uD83D\uDCAA Рывок улучшен!', '#ff8844');
+                    break;
+            }
+            proceedAfterReward();
+        }
+
+        function proceedAfterReward() {
+            $rewardScr.classList.add('hidden');
+            currentLevel++;
+            if (currentLevel > MAX_LEVEL) {
+                state = 'over';
+                stopTimer();
+                addScore(score, 'Все уровни!');
+                $endTitle.textContent = 'ПОБЕДА!';
+                $endTitle.className = 'win';
+                $endMsg.textContent = 'Ты прошёл все ' + MAX_LEVEL + ' уровней!';
+                $endScore.textContent = 'Финальный счёт: ' + score;
+                $end.classList.remove('hidden');
+                renderScores('scoresEnd');
+            } else {
+                startLevel();
+            }
+        }
+
+        // ============================
+        // ОБНОВЛЕНИЕ БАФОВ
+        // ============================
+        function updateBuffs() {
+            if (speedBuff.active) {
+                speedBuff.timer--;
+                $buffSpeed.classList.add('active');
+                $buffSpeed.textContent = 'SPEED x2 ' + Math.ceil(speedBuff.timer / 60) + 's';
+                if (speedBuff.timer <= 0) {
+                    speedBuff.active = false;
+                    $buffSpeed.classList.remove('active');
+                }
+            } else {
+                $buffSpeed.classList.remove('active');
+            }
+
+            if (scoreBuff.active) {
+                scoreBuff.timer--;
+                $buffScore.classList.add('active');
+                $buffScore.textContent = 'x3 ОЧКИ ' + Math.ceil(scoreBuff.timer / 60) + 's';
+                if (scoreBuff.timer <= 0) {
+                    scoreBuff.active = false;
+                    $buffScore.classList.remove('active');
+                }
+            } else {
+                $buffScore.classList.remove('active');
+            }
+
+            if (compassBuff.active) {
+                compassBuff.timer--;
+                $buffCompass.classList.add('active');
+                $buffCompass.textContent = 'КОМПАС ' + Math.ceil(compassBuff.timer / 60) + 's';
+                if (compassBuff.timer <= 0) {
+                    compassBuff.active = false;
+                    $buffCompass.classList.remove('active');
+                    clearCompassMarkers();
+                }
+            } else {
+                $buffCompass.classList.remove('active');
+            }
+
+            if (dashCooldown > 0) {
+                dashCooldown--;
+                const pct = Math.max(0, 1 - dashCooldown / DASH_CD) * 100;
+                $dashFill.style.width = pct + '%';
+            } else {
+                $dashFill.style.width = '100%';
+            }
+
+            if (dashFlash > 0) {
+                dashFlash--;
+                if (dashFlash <= 0) {
+                    playerLight.intensity = 1.2;
+                    playerLight.color.setHex(0xffaa44);
+                }
+            }
+        }
+
+        // ============================
+        // ИГРОК
+        // ============================
+        function createPlayer(px, pz) {
+            playerGroup = new THREE.Group();
+
+            const body = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.22, 0.28, 0.7, 8),
+                new THREE.MeshStandardMaterial({ color: 0x9b5de5, emissive: 0x3a1d6e, emissiveIntensity: 0.3, roughness: 0.6 })
+            );
+            body.position.y = 0.35; body.castShadow = true;
+            playerGroup.add(body);
+
+            const head = new THREE.Mesh(
+                new THREE.SphereGeometry(0.18, 8, 8),
+                new THREE.MeshStandardMaterial({ color: 0xbb86fc, emissive: 0x5c3d8f, emissiveIntensity: 0.3, roughness: 0.5 })
+            );
+            head.position.y = 0.85; head.castShadow = true;
+            playerGroup.add(head);
+
+            const hat = new THREE.Mesh(
+                new THREE.ConeGeometry(0.24, 0.35, 8),
+                new THREE.MeshStandardMaterial({ color: 0x6200ea, roughness: 0.5 })
+            );
+            hat.position.y = 1.15; hat.castShadow = true;
+            playerGroup.add(hat);
+
+            const staff = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6),
+                new THREE.MeshStandardMaterial({ color: 0x8d6e63 })
+            );
+            staff.position.set(0.35, 0.6, 0);
+            playerGroup.add(staff);
+
+            const orb = new THREE.Mesh(
+                new THREE.SphereGeometry(0.08, 8, 8),
+                new THREE.MeshStandardMaterial({ color: 0xff8844, emissive: 0xff8844, emissiveIntensity: 0.8 })
+            );
+            orb.position.set(0.35, 1.25, 0);
+            playerGroup.add(orb);
+
+            playerGroup.position.set(px, 0, pz);
+            scene.add(playerGroup);
+
+            playerLight = new THREE.PointLight(0xffaa44, 1.2, 8);
+            playerLight.position.set(px, 2, pz);
+            scene.add(playerLight);
+        }
+
+        // ============================
+        // КРИСТАЛЛЫ
+        // ============================
+        function createGems(positions) {
+            const geo = new THREE.OctahedronGeometry(0.22);
+            positions.forEach((pos, i) => {
+                const isGold = i % 3 !== 0;
+                const color = isGold ? 0xffd166 : 0x06d6a0;
+                const mat = new THREE.MeshStandardMaterial({
+                    color, emissive: color, emissiveIntensity: 0.7,
+                    metalness: 0.4, roughness: 0.2
+                });
+                const gem = new THREE.Mesh(geo, mat);
+                gem.position.set(pos.x, 0.7, pos.z);
+                gem.userData = { collected: false, baseY: 0.7, index: i, hex: '#' + color.toString(16).padStart(6, '0') };
+                scene.add(gem);
+                gemMeshes.push(gem);
+
+                if (i < 8) {
+                    const light = new THREE.PointLight(color, 0.5, 3);
+                    light.position.set(pos.x, 1.2, pos.z);
+                    scene.add(light);
+                    gemLights.push(light);
+                }
+            });
+        }
+
+        function createPortal() {
+            portalGroup = new THREE.Group();
+
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(0.5, 0.12, 16, 32),
+                new THREE.MeshStandardMaterial({ color: 0x06d6a0, emissive: 0x06d6a0, emissiveIntensity: 0.4, metalness: 0.6 })
+            );
+            ring.rotation.x = Math.PI / 2; ring.position.y = 1.0;
+            portalGroup.add(ring);
+
+            const disc = new THREE.Mesh(
+                new THREE.CircleGeometry(0.42, 32),
+                new THREE.MeshStandardMaterial({ color: 0x06d6a0, emissive: 0x06d6a0, emissiveIntensity: 0.3, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+            );
+            disc.rotation.x = -Math.PI / 2; disc.position.y = 1.0;
+            portalGroup.add(disc);
+
+            const pGeo = new THREE.CylinderGeometry(0.08, 0.1, WALL_H, 8);
+            const pMat = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.8 });
+            const p1 = new THREE.Mesh(pGeo, pMat); p1.position.set(-0.55, WALL_H / 2, 0);
+            const p2 = new THREE.Mesh(pGeo, pMat); p2.position.set(0.55, WALL_H / 2, 0);
+            portalGroup.add(p1); portalGroup.add(p2);
+
+            portalGroup.position.set(exitPos3D.x, 0, exitPos3D.z);
+            scene.add(portalGroup);
+
+            portalLight = new THREE.PointLight(0x06d6a0, 0.4, 5);
+            portalLight.position.set(exitPos3D.x, 1.5, exitPos3D.z);
+            scene.add(portalLight);
+        }
+
+        // ============================
+        // СТОЛКНОВЕНИЯ
+        // ============================
+        function isWall(r, c) {
+            if (r < 0 || r >= mapRows || c < 0 || c >= mapCols) return true;
+            const v = map[r][c];
+            return v === 1 || (v === 4 && !exitOpen);
+        }
+
+        function checkCollision(x, z) {
+            const minCol = Math.floor((x - PLAYER_R) / CELL + 0.5);
+            const maxCol = Math.floor((x + PLAYER_R) / CELL + 0.5);
+            const minRow = Math.floor((z - PLAYER_R) / CELL + 0.5);
+            const maxRow = Math.floor((z + PLAYER_R) / CELL + 0.5);
+
+            for (let r = minRow; r <= maxRow; r++) {
+                for (let c = minCol; c <= maxCol; c++) {
+                    if (!isWall(r, c)) continue;
+                    const wx = c * CELL, wz = r * CELL, half = CELL / 2;
+                    const cx = Math.max(wx - half, Math.min(x, wx + half));
+                    const cz = Math.max(wz - half, Math.min(z, wz + half));
+                    const dx = x - cx, dz = z - cz;
+                    if (dx * dx + dz * dz < PLAYER_R * PLAYER_R) return true;
+                }
+            }
+            return false;
+        }
+
+        // ============================
+        // УПРАВЛЕНИЕ
+        // ============================
+        document.addEventListener('keydown', (e) => {
+            if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+            keys[e.key] = true;
+            // Рывок по Shift
+            if (e.key === 'Shift' && !e.repeat) tryDash();
+        });
+        document.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+        const dpadDirs = { up: false, down: false, left: false, right: false };
+        document.querySelectorAll('.dpad-btn').forEach(btn => {
+            const d = btn.dataset.dir;
+            const on = () => { dpadDirs[d] = true; };
+            const off = () => { dpadDirs[d] = false; };
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); on(); });
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); off(); });
+            btn.addEventListener('touchcancel', off);
+            btn.addEventListener('mousedown', on);
+            btn.addEventListener('mouseup', off);
+            btn.addEventListener('mouseleave', off);
+        });
+
+        function updatePlayer() {
+            if (state !== 'playing' || !playerGroup) return;
+
+            let dx = 0, dz = 0;
+            if (keys['ArrowUp']    || keys['w'] || keys['W'] || keys['ц'] || keys['Ц'] || dpadDirs.up)    dz = -SPEED;
+            if (keys['ArrowDown']  || keys['s'] || keys['S'] || keys['ы'] || keys['Ы'] || dpadDirs.down)  dz = SPEED;
+            if (keys['ArrowLeft']  || keys['a'] || keys['A'] || keys['ф'] || keys['Ф'] || dpadDirs.left)  dx = -SPEED;
+            if (keys['ArrowRight'] || keys['d'] || keys['D'] || keys['в'] || keys['В'] || dpadDirs.right) dx = SPEED;
+
+            if (dx !== 0 && dz !== 0) { dx *= 0.7071; dz *= 0.7071; }
+
+            let speedMult = 1.0;
+            if (speedBuff.active) speedMult *= 2.0;
+            speedMult += permBonus.speed * 0.15;
+            dx *= speedMult;
+            dz *= speedMult;
+
+            const sx = dx / SUBSTEPS, sz = dz / SUBSTEPS;
+            for (let i = 0; i < SUBSTEPS; i++) {
+                const px = playerGroup.position.x, pz = playerGroup.position.z;
+                if (sx !== 0 && !checkCollision(px + sx, pz)) playerGroup.position.x += sx;
+                if (sz !== 0 && !checkCollision(playerGroup.position.x, pz + sz)) playerGroup.position.z += sz;
+            }
+
+            playerLight.position.set(playerGroup.position.x, 2, playerGroup.position.z);
+
+            if (dx !== 0 || dz !== 0) {
+                playerGroup.children[0].rotation.y += 0.08;
+                playerGroup.children[4].rotation.y -= 0.05;
+            }
+
+            checkGems();
+            checkBonuses();
+
+            if (exitOpen) {
+                const ex = exitPos3D.x - playerGroup.position.x;
+                const ez = exitPos3D.z - playerGroup.position.z;
+                if (ex * ex + ez * ez < 1.2) completeLevel();
+            }
+        }
+
+        // ============================
+        // КРИСТАЛЛЫ: сбор
+        // ============================
+        function checkGems() {
+            for (let i = 0; i < gemMeshes.length; i++) {
+                const gem = gemMeshes[i];
+                if (gem.userData.collected) continue;
+                const gx = gem.position.x - playerGroup.position.x;
+                const gz = gem.position.z - playerGroup.position.z;
+                if (gx * gx + gz * gz < 1.2) {
+                    gem.userData.collected = true;
+                    scene.remove(gem);
+                    if (i < gemLights.length) scene.remove(gemLights[i]);
+                    gemsCollected++;
+
+                    let points = (10 + Math.floor(timeLeft / 5)) * currentLevel;
+                    if (scoreBuff.active) points *= 3;
+                    points = Math.floor(points * (1 + permBonus.score * 0.5));
+                    score += points;
+                    $score.textContent = score;
+                    $gems.textContent = gemsCollected;
+                    sfxGem();
+                    spawnParticles(gem.position.x, 1, gem.position.z, gem.userData.hex, 8);
+
+                    if (scoreBuff.active) {
+                        showNotification('+' + points + ' (x3!)', '#ff6b9d');
+                    }
+
+                    if (gemsCollected >= totalGems) {
+                        exitOpen = true;
+                        sfxPortalOpen();
+                        spawnParticles(exitPos3D.x, 1.5, exitPos3D.z, '#06d6a0', 15);
+                    }
+                }
+            }
+        }
+
+        function animateGems(t) {
+            gemMeshes.forEach(gem => {
+                if (gem.userData.collected) return;
+                gem.rotation.y += 0.025;
+                gem.rotation.x = Math.sin(t * 0.002 + gem.userData.index) * 0.3;
+                gem.position.y = gem.userData.baseY + Math.sin(t * 0.003 + gem.userData.index * 1.5) * 0.15;
+            });
+        }
+
+        function animatePortal(t) {
+            if (!portalGroup) return;
+            portalGroup.children[0].rotation.z += 0.015;
+            if (exitOpen) {
+                const p = 0.7 + Math.sin(t * 0.004) * 0.3;
+                portalGroup.children[0].material.emissiveIntensity = p;
+                portalGroup.children[1].material.opacity = 0.5 + Math.sin(t * 0.005) * 0.2;
+                portalGroup.children[1].material.emissiveIntensity = 0.6;
+                portalLight.intensity = 1.2 + Math.sin(t * 0.004) * 0.4;
+            } else {
+                portalGroup.children[0].material.emissiveIntensity = 0.15;
+                portalGroup.children[1].material.opacity = 0.15;
+                portalLight.intensity = 0.15;
+            }
+        }
+
+        // ============================
+        // КАМЕРА
+        // ============================
+        function updateCamera() {
+            if (!playerGroup) return;
+            const tx = playerGroup.position.x;
+            const tz = playerGroup.position.z + CAM_BACK;
+            camera.position.x += (tx - camera.position.x) * CAM_LERP;
+            camera.position.z += (tz - camera.position.z) * CAM_LERP;
+            camera.position.y += (CAM_HEIGHT - camera.position.y) * CAM_LERP;
+            camera.lookAt(playerGroup.position.x, 0, playerGroup.position.z);
+        }
+
+        // ============================
+        // ЧАСТИЦЫ
+        // ============================
+        function spawnParticles(x, y, z, color, count) {
+            const geo = new THREE.BoxGeometry(0.07, 0.07, 0.07);
+            for (let i = 0; i < count; i++) {
+                const mat = new THREE.MeshBasicMaterial({ color, transparent: true });
+                const m = new THREE.Mesh(geo, mat);
+                m.position.set(x, y, z);
+                scene.add(m);
+                particles.push({ mesh: m, vx: (Math.random() - 0.5) * 0.1, vy: Math.random() * 0.06 + 0.02, vz: (Math.random() - 0.5) * 0.1, life: 35 + Math.random() * 20 });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.mesh.position.x += p.vx;
+                p.mesh.position.y += p.vy;
+                p.mesh.position.z += p.vz;
+                p.vy -= 0.002;
+                p.life--;
+                p.mesh.material.opacity = Math.max(0, p.life / 55);
+                if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
+            }
+        }
+
+        // ============================
+        // ЗВУКИ (Web Audio API)
+        // ============================
+        let audioCtx = null;
+        function initAudio() { if (!audioCtx) try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {} }
+        function tone(freq, dur, type, vol) {
+            if (!audioCtx) return;
+            try {
+                const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                o.type = type || 'square'; o.frequency.value = freq;
+                g.gain.value = vol || 0.06;
+                g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+                o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + dur);
+            } catch(e) {}
+        }
+        function sfxGem() { tone(880, 0.12, 'sine', 0.06); setTimeout(() => tone(1320, 0.1, 'sine', 0.04), 60); }
+        function sfxPortalOpen() { tone(523, 0.15, 'sine', 0.06); setTimeout(() => tone(659, 0.15, 'sine', 0.06), 120); setTimeout(() => tone(784, 0.2, 'sine', 0.07), 240); }
+        function sfxLevelComplete() { tone(523, 0.12, 'sine', 0.06); setTimeout(() => tone(659, 0.12, 'sine', 0.06), 120); setTimeout(() => tone(784, 0.12, 'sine', 0.06), 240); setTimeout(() => tone(1047, 0.25, 'sine', 0.08), 360); setTimeout(() => tone(1319, 0.3, 'sine', 0.07), 500); }
+        function sfxLose() { tone(400, 0.25, 'sawtooth', 0.04); setTimeout(() => tone(300, 0.25, 'sawtooth', 0.04), 200); setTimeout(() => tone(200, 0.4, 'sawtooth', 0.04), 400); }
+        function sfxBonus() { tone(660, 0.1, 'sine', 0.07); setTimeout(() => tone(880, 0.1, 'sine', 0.06), 80); setTimeout(() => tone(1100, 0.15, 'sine', 0.05), 160); }
+        function sfxDash(success) {
+            if (success) {
+                tone(440, 0.08, 'sawtooth', 0.06);
+                setTimeout(() => tone(880, 0.12, 'sine', 0.08), 40);
+                setTimeout(() => tone(1320, 0.15, 'sine', 0.06), 100);
+            } else {
+                tone(200, 0.15, 'square', 0.04);
+                setTimeout(() => tone(150, 0.2, 'square', 0.03), 100);
+            }
+        }
+
+        // ============================
+        // ТАЙМЕР
+        // ============================
+        function startTimer() {
+            stopTimer();
+            timer = setInterval(() => {
+                if (state !== 'playing') return;
+                timeLeft--;
+                $time.textContent = timeLeft;
+                if (timeLeft <= 10) $time.style.color = timeLeft % 2 === 0 ? '#ef476f' : '#ff2222';
+                if (timeLeft <= 0) gameOver('Время вышло!');
+            }, 1000);
+        }
+        function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
+
+        // ============================
+        // УПРАВЛЕНИЕ ИГРОЙ
+        // ============================
+        function startGame() {
+            initAudio();
+            currentLevel = 1;
+            score = 0;
+            permBonus = { speed: 0, time: 0, score: 0, gems: false };
+            dashChance = DASH_CHANCE;
+            startLevel();
+        }
+
+        function startLevel() {
+            stopTimer();
+            const cfg = getLevelConfig(currentLevel);
+            map = generateMaze(currentLevel);
+            mapRows = map.length;
+            mapCols = map[0].length;
+            gemsCollected = 0;
+            totalGems = 0;
+            exitOpen = false;
+            timeLeft = cfg.time;
+
+            speedBuff = { active: false, timer: 0, duration: 300 };
+            scoreBuff = { active: false, timer: 0, duration: 600 };
+            compassBuff = { active: false, timer: 0, duration: 480 };
+            dashCooldown = 0;
+            dashFlash = 0;
+
+            for (let r = 0; r < mapRows; r++)
+                for (let c = 0; c < mapCols; c++)
+                    if (map[r][c] === 3) totalGems++;
+
+            if (permBonus.gems && totalGems > 0) {
+                gemsCollected = Math.min(1, totalGems);
+            }
+
+            buildScene();
+            state = 'playing';
+
+            $level.textContent = currentLevel;
+            $score.textContent = score;
+            $gems.textContent = gemsCollected;
+            $gemsTot.textContent = totalGems;
+            $time.textContent = timeLeft;
+            $time.style.color = '';
+
+            $start.classList.add('hidden');
+            $end.classList.add('hidden');
+            $levelScr.classList.add('hidden');
+            $rewardScr.classList.add('hidden');
+            $buffSpeed.classList.remove('active');
+            $buffScore.classList.remove('active');
+            $buffCompass.classList.remove('active');
+
+            startTimer();
+        }
+
+        function completeLevel() {
+            if (state !== 'playing') return;
+            state = 'levelcomplete';
+            stopTimer();
+
+            const bonus = timeLeft * 5 * currentLevel;
+            score += bonus;
+            sfxLevelComplete();
+            $score.textContent = score;
+
+            setTimeout(() => {
+                const cfg = getLevelConfig(currentLevel);
+                $lvlTitle.textContent = 'УРОВЕНЬ ' + currentLevel + ' ПРОЙДЕН!';
+                $lvlMsg.innerHTML =
+                    'Бонус за время: +' + bonus + ' очков<br>' +
+                    'Размер карты: ' + cfg.grid + 'x' + cfg.grid + ' | Кристаллов: ' + totalGems + '<br>' +
+                    '<span style="color:#ffdd57">Нажми ниже, чтобы выбрать награду!</span>';
+                $levelScore.textContent = 'Общий счёт: ' + score;
+                $levelScr.classList.remove('hidden');
+            }, 500);
+        }
+
+        function nextLevel() {
+            $levelScr.classList.add('hidden');
+            showRewardScreen();
+        }
+
+        function gameOver(msg) {
+            if (state === 'over') return;
+            state = 'over';
+            stopTimer();
+            sfxLose();
+            addScore(score, 'Уровень ' + currentLevel);
+
+            setTimeout(() => {
+                $endTitle.textContent = 'ПОРАЖЕНИЕ';
+                $endTitle.className = 'lose';
+                $endMsg.textContent = msg;
+                $endScore.textContent = 'Счёт: ' + score + ' (Уровень ' + currentLevel + ')';
+                $end.classList.remove('hidden');
+                renderScores('scoresEnd');
+            }, 400);
+        }
+
+        function showMenu() {
+            stopTimer();
+            state = 'menu';
+            clearScene();
+            $start.classList.remove('hidden');
+            $end.classList.add('hidden');
+            $levelScr.classList.add('hidden');
+            $rewardScr.classList.add('hidden');
+            $level.textContent = '1';
+            $score.textContent = '0';
+            $gems.textContent = '0';
+            $time.textContent = '60';
+            $time.style.color = '';
+            $buffSpeed.classList.remove('active');
+            $buffScore.classList.remove('active');
+            $buffCompass.classList.remove('active');
+            renderScores('scoresStart');
+        }
+
+        // ============================
+        // РЕКОРДЫ (localStorage)
+        // ============================
+        function loadScores() { try { const s = localStorage.getItem('maze3d_scores'); if (s) scores = JSON.parse(s); } catch(e) { scores = []; } }
+        function saveScores() { try { localStorage.setItem('maze3d_scores', JSON.stringify(scores.slice(0, 10))); } catch(e) {} }
+        function addScore(pts, note) {
+            scores.push({ pts, note, date: new Date().toLocaleDateString('ru') });
+            scores.sort((a, b) => b.pts - a.pts);
+            saveScores();
+        }
+        function renderScores(elemId) {
+            const el = document.getElementById(elemId);
+            if (scores.length === 0) { el.innerHTML = ''; return; }
+            let html = '<table><tr><th>#</th><th>Счёт</th><th>Уровень</th><th>Дата</th></tr>';
+            scores.slice(0, 5).forEach((s, i) => {
+                html += '<tr><td>' + (i + 1) + '</td><td>' + s.pts + '</td><td>' + s.note + '</td><td>' + s.date + '</td></tr>';
+            });
+            html += '</table>';
+            el.innerHTML = html;
+        }
+
+        // ============================
+        // КНОПКИ
+        // ============================
+        document.getElementById('btnStart').addEventListener('click', startGame);
+        document.getElementById('btnNext').addEventListener('click', nextLevel);
+        document.getElementById('btnSkipReward').addEventListener('click', proceedAfterReward);
+        document.getElementById('btnRestart').addEventListener('click', startGame);
+        document.getElementById('btnMenu').addEventListener('click', showMenu);
+        document.getElementById('btnHotRestart').addEventListener('click', startLevel);
+
+        // ============================
+        // ГЛАВНЫЙ ЦИКЛ
+        // ============================
+        function animate(t) {
+            requestAnimationFrame(animate);
+            if (state === 'playing') {
+                updatePlayer();
+                updateBuffs();
+            }
+            if (state === 'levelcomplete') {
+                if (playerGroup) {
+                    const angle = t * 0.001;
+                    const orbitR = 8;
+                    camera.position.x = playerGroup.position.x + Math.sin(angle) * orbitR;
+                    camera.position.z = playerGroup.position.z + Math.cos(angle) * orbitR;
+                    camera.position.y = 10;
+                    camera.lookAt(playerGroup.position.x, 0, playerGroup.position.z);
+                }
+            }
+            updateCamera();
+            animateGems(t);
+            animateBonuses(t);
+            animatePortal(t);
+            updateParticles();
+            renderer.render(scene, camera);
+        }
+
+        // ============================
+        // ЗАПУСК
+        // ============================
+        loadTextures();
+        loadScores();
+        initThree();
+        renderScores('scoresStart');
+        animate(0);
+        </script>
+    </body>
+</html>
